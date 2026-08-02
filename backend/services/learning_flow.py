@@ -134,8 +134,13 @@ def normalize_student_task_step_labels(message):
         return message
     text = message
     replacements = [
+        (r"当前是第三步流程图设计", "当前是第二步任务“设计算法”流程图设计"),
+        (r"第三步流程图设计", "第二步任务“设计算法”流程图设计"),
+        (r"第三步[：:]?\s*流程图", "第二步任务“设计算法”流程图"),
         (r"当前是第三步[：:]?请用IPO模式", "当前是第一步任务“分析问题”：请用IPO模式"),
         (r"当前是第三步[：:]?", "当前是第一步任务“分析问题”："),
+        (r"进入第二步任务[“\"]?设计算法[”\"]?[，,、]?\s*也就是(?:编写|写)代码", "进入第三步任务“编写程序”，也就是在海龟编辑器编写代码"),
+        (r"第二步任务[“\"]?设计算法[”\"]?[，,、]?\s*也就是(?:编写|写)代码", "第三步任务“编写程序”，也就是在海龟编辑器编写代码"),
         (r"开始第四步[：:]?\s*(?:生成流程图框架|设计流程图|设计算法)", "开始第二步任务“设计算法”"),
         (r"进入第四步[：:]?\s*(?:生成流程图框架|设计流程图|设计算法)", "进入第二步任务“设计算法”"),
         (r"第四步[：:]?\s*(?:流程图框架补全|流程图|设计算法)", "第二步任务“设计算法”"),
@@ -247,13 +252,13 @@ def guard_premature_flowchart_completion(state, agent, user_message, assistant_m
 def programming_prompt_message(state):
     exercise = state.get("exercise_prompt") or "当前练习任务"
     return (
-        f"现在进入编写程序任务。你的练习任务是：{exercise}\n\n"
-        "请你根据刚才完成的IPO分析和流程图，自己写出完整 Python 程序。\n\n"
+        f"现在进入第三步任务“编写程序/编程”。你的练习任务是：{exercise}\n\n"
+        "请你根据刚才完成的IPO分析和流程图，到海龟编辑器中自己写出完整 Python 程序。\n\n"
         "写代码前可以简单检查这几件事：\n"
         "1. 输入：需要从用户那里得到哪些数据？\n"
         "2. 处理：核心公式或判断条件是什么？\n"
         "3. 输出：最后要显示什么结果？\n\n"
-        "请直接编写完整代码并运行。运行后把代码和运行结果发给我；如果报错，我再帮你一起调试。"
+        "请直接在海龟编辑器中编写完整代码并运行。运行后把代码和运行结果发给我；如果报错，我再帮你一起调试。"
     )
 
 
@@ -728,6 +733,9 @@ def decorate_message(state, agent, message, user_message):
     if should_format_quiz(agent, current_step):
         message, quiz_metadata = ensure_complete_quiz_message(state, agent, current_step, message)
     next_phase, metadata = update_learning_step(state, agent, user_message, message)
+    if metadata.get("learning_step") != current_step:
+        metadata["learning_step_changed"] = True
+        metadata["previous_learning_step"] = current_step
     metadata.update(quiz_metadata)
     if quiz_metadata.get("quiz_layout_complete") is False:
         phase = current_phase
