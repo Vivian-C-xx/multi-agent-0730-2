@@ -798,6 +798,27 @@ def mentor_quiz_explanation_trigger(state, user_message, assistant_message):
         "可以给一个短小的Python代码案例。最后询问学生是否掌握，并提醒学生回复“我已掌握”后，助教会再出检验题。"
     )
 
+
+def normalize_quiz_pass_transition(message):
+    if not assistant_confirms_quiz_pass(message):
+        return message
+    text = message or ""
+    mentor_handoff_patterns = [
+        r"(?:接下来|下一步|之后)[^。\n！？]*(?:编程导师智能体|导师智能体|导师)[^。\n！？]*(?:讲解|解释|知识点)[^。\n！？]*[。\n！？]?",
+        r"(?:接下来|下一步|之后)[^。\n！？]*(?:讲解|解释)[^。\n！？]*(?:编程导师智能体|导师智能体|导师)[^。\n！？]*[。\n！？]?",
+        r"如果后续在计划制定或作品引导方面有需要，我随时在[。\n！？]?",
+    ]
+    for pattern in mentor_handoff_patterns:
+        text = re.sub(pattern, "", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if not contains_any(text, ["任务拆解", "时间分配", "分析问题", "设计算法", "编写程序", "代码优化"]):
+        text += (
+            "\n\n接下来进入任务拆解与时间分配。请你把本次编程练习拆解为："
+            "分析问题、设计算法、编写程序、代码优化四项，并为每项分配时间，总计20分钟。"
+        )
+    return text
+
+
 def prepare_step_for_prompt(state, user_message):
     step = state.get("learning_step", "topic_intro")
     text = user_message.strip()
@@ -921,6 +942,8 @@ def decorate_message(state, agent, message, user_message):
         message, grading_metadata = normalize_quiz_grading(user_message, message)
         quiz_metadata.update(grading_metadata)
     next_phase, metadata = update_learning_step(state, agent, user_message, message)
+    if current_step == "quiz" and metadata.get("quiz_passed"):
+        message = normalize_quiz_pass_transition(message)
     if metadata.get("learning_step") != current_step:
         metadata["learning_step_changed"] = True
         metadata["previous_learning_step"] = current_step
