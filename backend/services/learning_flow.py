@@ -461,6 +461,109 @@ def ensure_complete_quiz_message(state, agent, step, message):
     }
 
 
+def normalize_answer_token(value):
+    text = re.sub(r"[\s\"'“”‘’。.,，、:：;；()（）]", "", str(value or "")).upper()
+    if not text:
+        return ""
+    if text[0] in "ABCD":
+        return text[0]
+    if "对" in text or "正确" in text:
+        return "对"
+    if "错" in text or "错误" in text:
+        return "错"
+    return text
+
+
+def parse_student_quiz_answers(message):
+    text = message or ""
+    numbered = re.findall(r"(?:^|\s)(?:第)?([1-9]\d*)\s*(?:题)?\s*[:：.、)]?\s*([A-Da-d对错])", text)
+    if numbered:
+        return {int(index): normalize_answer_token(answer) for index, answer in numbered}
+    answers = [normalize_answer_token(answer) for answer in re.findall(r"[A-Da-d]|对|错", text)]
+    return {index + 1: answer for index, answer in enumerate(answers) if answer}
+
+
+def split_quiz_grading_segments(message):
+    pattern = re.compile(r"第\s*([1-9]\d*)\s*题\s*[:：]?(.*?)(?=第\s*[1-9]\d*\s*题|正确率|前测通过|$)", re.S)
+    return [(int(index), body.strip()) for index, body in pattern.findall(message or "")]
+
+
+def answer_key_from_segment(segment):
+    match = re.search(r"正确答案\s*(?:是|为|[:：])?\s*([A-Da-d对错])", segment or "")
+    if match:
+        return normalize_answer_token(match.group(1))
+    return ""
+
+
+def segment_marks_correct(segment):
+    without_key = re.sub(r"正确答案\s*(?:是|为|[:：])?\s*[A-Da-d对错]", "", segment or "")
+    if re.search(r"不正确|答错|错了|错误", without_key):
+        return False
+    return bool(re.search(r"(^|[：:，,。；;\s])正确([。；;，,\s]|$)", without_key))
+
+
+def replace_quiz_score(message, percent, passed):
+    text = message or ""
+    pass_text = "是" if passed else "否"
+    if re.search(r"正确率\s*[:：]\s*\d{1,3}\s*%", text):
+        text = re.sub(r"正确率\s*[:：]\s*\d{1,3}\s*%", f"正确率：{percent}%", text)
+    else:
+        text += f"\n\n正确率：{percent}%"
+    if re.search(r"前测通过\s*[:：]\s*[是否]", text):
+        text = re.sub(r"前测通过\s*[:：]\s*[是否]", f"前测通过：{pass_text}", text)
+    else:
+        text += f"\n前测通过：{pass_text}"
+    return text
+
+
+def normalize_quiz_grading(user_message, assistant_message):
+    student_answers = parse_student_quiz_answers(user_message)
+    segments = split_quiz_grading_segments(assistant_message)
+    if not student_answers or not segments:
+        return assistant_message, {"quiz_grading_checked": False}
+
+    results = {}
+    compared_with_answer_key = []
+    for index, segment in segments:
+        student_answer = student_answers.get(index)
+        correct_answer = answer_key_from_segment(segment)
+        if correct_answer and student_answer:
+            results[index] = student_answer == correct_answer
+            compared_with_answer_key.append(index)
+        elif segment_marks_correct(segment):
+            results[index] = True
+
+    total = max(len(student_answers), max(results.keys(), default=0))
+    if not total or len(results) < total:
+        return assistant_message, {
+            "quiz_grading_checked": True,
+            "quiz_grading_complete": False,
+            "quiz_grading_results": results,
+        }
+
+    correct_count = sum(1 for value in results.values() if value)
+    percent = round(correct_count * 100 / total)
+    passed = correct_count == total
+    corrected = replace_quiz_score(assistant_message, percent, passed)
+    metadata = {
+        "quiz_grading_checked": True,
+        "quiz_grading_complete": True,
+        "quiz_grading_correct_count": correct_count,
+        "quiz_grading_total": total,
+        "quiz_grading_percent": percent,
+        "quiz_grading_compared_with_answer_key": compared_with_answer_key,
+    }
+    if corrected != assistant_message:
+        metadata["quiz_grading_corrected"] = True
+    if compared_with_answer_key and passed and "正确率：100%" not in assistant_message:
+        corrected += (
+            "\n\n系统校验：你的作答与助教回复中给出的正确答案一致，"
+            "因此本次前测按100%通过处理。"
+        )
+        metadata["quiz_grading_corrected"] = True
+    return corrected, metadata
+
+
 def parse_time_plan(message):
     text = message.strip()
     planned = {}
@@ -732,6 +835,9 @@ def decorate_message(state, agent, message, user_message):
     quiz_metadata = {}
     if should_format_quiz(agent, current_step):
         message, quiz_metadata = ensure_complete_quiz_message(state, agent, current_step, message)
+    if agent == "assistant" and current_step == "quiz":
+        message, grading_metadata = normalize_quiz_grading(user_message, message)
+        quiz_metadata.update(grading_metadata)
     next_phase, metadata = update_learning_step(state, agent, user_message, message)
     if metadata.get("learning_step") != current_step:
         metadata["learning_step_changed"] = True
