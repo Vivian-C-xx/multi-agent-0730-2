@@ -120,7 +120,13 @@ def call_llm(state, agent, message):
         if role in {"user", "assistant"} and content:
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
-    payload_data = {"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 900}
+    payload_data = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 1200,
+        "thinking": {"type": "disabled"},
+    }
     payload = json.dumps(payload_data, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         _api_url(),
