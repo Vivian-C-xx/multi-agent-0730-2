@@ -1,5 +1,11 @@
 from backend.agents import mentor_agent, peer_agent, tutor_agent
-from backend.services.learning_flow import looks_like_debug_success, looks_like_replan, looks_like_time_plan
+from backend.services.learning_flow import (
+    looks_like_code_help,
+    looks_like_debug_failure,
+    looks_like_debug_success,
+    looks_like_replan,
+    looks_like_time_plan,
+)
 from backend.utils import contains_any
 
 AGENT_NAMES = {
@@ -46,6 +52,12 @@ def agent_notice(agent):
 def route_agent(message, state, explicit_agent="auto"):
     text = message.lower()
     step = state.get("learning_step", "topic_intro")
+    if looks_like_debug_failure(message):
+        return "mentor"
+    if step == "debugging" and looks_like_debug_success(message):
+        return "peer"
+    if looks_like_code_help(message):
+        return "mentor"
     if step == "self_evaluation" or state.get("reflection_current_step"):
         return "assistant"
     if step == "quiz_explain_wait":
@@ -58,8 +70,6 @@ def route_agent(message, state, explicit_agent="auto"):
         return "manager"
     if contains_any(message, ["学习完", "学完", "本节课结束", "完成相关内容", "请生成报告", "自评", "反思", "改进方案"]):
         return "assistant"
-    if looks_like_debug_success(message):
-        return "peer"
     if state.get("overtime_replan_pending") and looks_like_time_plan(message):
         return "peer"
     if looks_like_replan(message):
