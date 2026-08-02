@@ -153,6 +153,30 @@ class QuizFormattingTest(unittest.TestCase):
         self.assertTrue(metadata["quiz_passed"])
         self.assertIn("正确率：100%", response)
 
+    def test_perfect_quiz_does_not_handoff_to_mentor(self):
+        state = {"learning_step": "quiz", "learning_phase": "前测"}
+        response, phase, metadata = decorate_message(
+            state,
+            "assistant",
+            (
+                "第1题 你的答案：B 正确答案：B 正确\n"
+                "第2题 你的答案：B 正确答案：B 正确\n"
+                "第3题 你的答案：对 正确答案：对 正确\n"
+                "第4题 你的答案：B 正确答案：B 正确\n\n"
+                "正确率：100% 前测通过：是\n\n"
+                "接下来，我会请编程导师智能体为你讲解错题知识点。如果后续在计划制定或作品引导方面有需要，我随时在。"
+            ),
+            "B B 对 B",
+        )
+        self.assertEqual("plan_allocation", state["learning_step"])
+        self.assertEqual("任务拆解与时间分配", phase)
+        self.assertTrue(metadata["quiz_passed"])
+        self.assertNotIn("讲解错题", response)
+        self.assertNotIn("编程导师智能体", response)
+        self.assertNotIn("mentor_explained_quiz_errors", metadata)
+        self.assertNotIn("after_messages", metadata)
+        self.assertIn("任务拆解与时间分配", response)
+
 
 if __name__ == "__main__":
     unittest.main()
