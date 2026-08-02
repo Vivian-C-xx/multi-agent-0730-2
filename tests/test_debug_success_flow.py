@@ -6,6 +6,7 @@ from backend.services.learning_flow import (
     guard_algorithm_design_flowchart_format,
     guard_premature_flowchart_completion,
     guard_programming_stage_overguidance,
+    looks_like_debug_failure,
     looks_like_debug_success,
 )
 
@@ -14,11 +15,31 @@ class DebugSuccessFlowTest(unittest.TestCase):
     def test_success_run_words_are_detected(self):
         self.assertTrue(looks_like_debug_success("代码已经成功运行了"))
         self.assertTrue(looks_like_debug_success("程序跑通了，没有报错"))
+        self.assertFalse(looks_like_debug_success("我的代码还是不能运行"))
+        self.assertTrue(looks_like_debug_failure("我的代码还是不能运行"))
 
     def test_success_run_routes_to_peer_before_mentor(self):
         state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
         message = 'print("ok") 成功运行了'
         self.assertEqual("peer", route_agent(message, state))
+
+    def test_code_that_cannot_run_routes_to_mentor(self):
+        state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
+        message = 'a=input("请输入身高") b=input("请输入体重") bmi=b/(a*a) 我的代码还是不能运行'
+        self.assertEqual("mentor", route_agent(message, state))
+
+    def test_code_failure_does_not_enter_reflection(self):
+        state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
+        _, phase, metadata = decorate_message(
+            state,
+            "mentor",
+            "先看报错位置，再检查输入值的数据类型。",
+            'a=input("请输入身高") b=input("请输入体重") bmi=b/(a*a) 我的代码还是不能运行',
+        )
+        self.assertEqual("代码编写与调试", phase)
+        self.assertEqual("debugging", state["learning_step"])
+        self.assertNotIn("complete_timer", metadata)
+        self.assertNotIn("reflection_available", metadata)
 
     def test_peer_success_auto_starts_assistant_reflection(self):
         state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
