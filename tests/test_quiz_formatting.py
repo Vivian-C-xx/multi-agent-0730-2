@@ -6,6 +6,7 @@ from backend.services.learning_flow import (
     ensure_complete_quiz_message,
     format_quiz_layout,
     normalize_quiz_grading,
+    quiz_regeneration_prompt,
     quiz_layout_issues,
 )
 
@@ -72,6 +73,26 @@ class QuizFormattingTest(unittest.TestCase):
         self.assertTrue(metadata["quiz_llm_error"])
         self.assertIn("DeepSeek API 密钥", message)
 
+
+    def test_input_output_topic_uses_io_fallback_after_failed_retry(self):
+        incomplete = "题目1：顺序结构是什么 A. 从上到下 B. 随机执行"
+        state = {"current_topic": "输入输出", "exercise_prompt": "输出圆周率取3.1415926"}
+        with patch("backend.services.learning_flow.call_llm", return_value=incomplete):
+            message, metadata = ensure_complete_quiz_message(state, "assistant", "exercise_intake", incomplete)
+        self.assertTrue(metadata["quiz_fallback_generated"])
+        self.assertIn("print() 的主要作用", message)
+        self.assertIn("input() 的主要作用", message)
+        self.assertIn("英文逗号的作用", message)
+        self.assertNotIn("程序顺序结构最主要的特点", message)
+
+    def test_quiz_regeneration_prompt_keeps_current_topic(self):
+        prompt = quiz_regeneration_prompt(
+            {"current_topic": "输入输出", "exercise_prompt": "输出圆周率取3.1415926"},
+            "格式不完整",
+        )
+        self.assertIn("当前学习主题是：输入输出", prompt)
+        self.assertIn("不要退回到通用的顺序结构题", prompt)
+        self.assertIn("至少三道题必须直接考查输入输出", prompt)
 
     def test_quiz_grading_corrects_answer_key_consistency(self):
         message = (
