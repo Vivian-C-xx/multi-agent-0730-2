@@ -17,15 +17,57 @@ DEBUG_SUCCESS_WORDS = [
     "运行成功",
     "成功运行",
     "成功运行了",
-    "可以运行",
-    "能运行",
+    "可以运行了",
+    "能运行了",
+    "可以正常运行",
+    "能正常运行",
     "跑通",
     "跑通了",
     "没有报错",
     "无报错",
     "代码成功",
-    "成功了",
     "问题解决",
+]
+DEBUG_FAILURE_WORDS = [
+    "不能运行",
+    "无法运行",
+    "不会运行",
+    "没法运行",
+    "运行不了",
+    "跑不通",
+    "不能执行",
+    "无法执行",
+    "还是不能运行",
+    "还不能运行",
+    "仍然不能运行",
+    "没有成功运行",
+    "没成功运行",
+    "没有跑通",
+    "还是报错",
+    "仍然报错",
+    "报错",
+    "错误",
+    "bug",
+    "Bug",
+    "BUG",
+    "Traceback",
+    "SyntaxError",
+    "TypeError",
+    "NameError",
+]
+CODE_HELP_WORDS = [
+    "修改代码",
+    "改代码",
+    "优化代码",
+    "调试代码",
+    "代码怎么改",
+    "哪里错",
+    "哪错",
+    "为什么错",
+    "运行错误",
+    "运行结果",
+    "运行不了",
+    "不能运行",
 ]
 FLOWCHART_COMPLETION_WORDS = [
     "流程图框架补全完成",
@@ -489,8 +531,38 @@ def looks_like_time_plan(message):
 def looks_like_replan(message):
     return contains_any(message, REPLAN_WORDS) and bool(parse_time_plan(message))
 
+def looks_like_debug_failure(message):
+    text = message or ""
+    compact = re.sub(r"\s+", "", text)
+    hard_failure_words = [
+        word for word in DEBUG_FAILURE_WORDS
+        if word not in {"报错", "错误", "bug", "Bug", "BUG"}
+    ]
+    if contains_any(text, hard_failure_words):
+        return True
+    if contains_any(text, ["没有报错", "无报错"]):
+        return False
+    if contains_any(text, ["报错", "错误", "bug", "Bug", "BUG"]):
+        return True
+    return bool(re.search(r"(?:不|没|未|无法|不会|不能|没法|仍然|还是).{0,8}(?:运行|执行|跑通|成功)", compact))
+
 def looks_like_debug_success(message):
-    return contains_any(message, DEBUG_SUCCESS_WORDS)
+    if looks_like_debug_failure(message):
+        return False
+    return contains_any(message or "", DEBUG_SUCCESS_WORDS)
+
+def looks_like_code_help(message):
+    text = message or ""
+    lowered = text.lower()
+    if looks_like_debug_failure(text) or contains_any(text, CODE_HELP_WORDS):
+        return True
+    if "```" in lowered or "traceback" in lowered or "syntaxerror" in lowered:
+        return True
+    if re.search(r"\b(?:print|input|float|int|str|if|elif|else|for|while|def)\s*\(", lowered):
+        return True
+    if re.search(r"(?m)^\s*[a-zA-Z_]\w*\s*=", text):
+        return True
+    return False
 
 
 def assistant_reflection_start_message():
@@ -589,7 +661,7 @@ def update_learning_step(state, agent, user_message, assistant_message=""):
             metadata["replan_invalid"] = True
             metadata["replan_validation"] = validation
             metadata["parsed_time_plan"] = planned_tasks
-    elif agent == "peer" and looks_like_debug_success(text):
+    elif agent == "peer" and step == "debugging" and looks_like_debug_success(text):
         phase = "学习自评与报告"
         step = "self_evaluation"
         metadata["complete_timer"] = True
@@ -631,7 +703,7 @@ def update_learning_step(state, agent, user_message, assistant_message=""):
     elif step == "flowchart" and looks_like_numbered_flowchart_answer(text) and mentor_claims_flowchart_complete(assistant_message):
         phase = "代码编写与调试"
         step = "debugging"
-    elif contains_any(text, ["报错", "错误", "bug", "调试", "Traceback", "SyntaxError", "TypeError", "NameError"]):
+    elif looks_like_debug_failure(text) or contains_any(text, ["报错", "错误", "bug", "调试", "Traceback", "SyntaxError", "TypeError", "NameError"]):
         phase = "代码编写与调试"
         step = "debugging"
     elif contains_any(text, REFLECTION_WORDS):
