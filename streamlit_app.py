@@ -12,7 +12,13 @@ import streamlit as st
 
 from backend.agents.router_agent import AGENT_NAMES, agent_notice, manager_refusal, route_agent
 from backend.services.knowledge_base import build_knowledge_summary, existing_upload_rows, extract_text
-from backend.services.learning_flow import clean_reply, decorate_message, maybe_append_auto_followup, prepare_step_for_prompt
+from backend.services.learning_flow import (
+    assistant_reflection_start_message,
+    clean_reply,
+    decorate_message,
+    maybe_append_auto_followup,
+    prepare_step_for_prompt,
+)
 from backend.services.llm_client import call_llm
 from backend.services.reflection_service import (
     get_reflection_session_payload,
@@ -856,10 +862,31 @@ def auto_advance_after_completion(state, user_message, metadata):
     state["overtime_replan_pending"] = False
     phase = state.get("learning_phase", "任务执行")
     if advanced["all_done"]:
+        state["learning_phase"] = "学习自评与报告"
+        state["learning_step"] = "self_evaluation"
         message = (
             f"我看到你已经完成“{advanced['completed_task']}”。四项任务都已完成，我已帮你暂停倒计时，"
-            "接下来可以进入学习自评与报告。"
+            "接下来由编程助教智能体辅助你进行学习评价和反思。"
         )
+        phase = "学习自评与报告"
+        metadata["complete_timer"] = True
+        metadata["pause_timer"] = True
+        metadata["progress"] = 100
+        metadata["reflection_available"] = True
+        metadata["assistant_started_reflection"] = True
+        metadata["learning_step"] = "self_evaluation"
+        peer_notice = append_fixed_agent_message(state, "peer", message, phase, "学生完成全部任务后自动进入反思")
+        assistant_notice = append_fixed_agent_message(
+            state,
+            "assistant",
+            assistant_reflection_start_message(),
+            phase,
+            "学生完成全部任务后助教发起学习评价",
+        )
+        metadata["auto_messages"] = [peer_notice, assistant_notice]
+        metadata["timer_auto_advanced"] = True
+        metadata["rerun_after_timer_update"] = True
+        return assistant_notice
     else:
         message = (
             f"我看到你已经完成“{advanced['completed_task']}”，已自动帮你进入下一任务："
