@@ -146,6 +146,29 @@ class DebugSuccessFlowTest(unittest.TestCase):
         )
         self.assertEqual(original, guarded)
 
+    def test_flowchart_completion_marks_step_change_without_extra_timer_advance(self):
+        state = {"learning_step": "flowchart", "learning_phase": "流程图完善"}
+        response, _, metadata = decorate_message(
+            state,
+            "mentor",
+            "回答正确！所有空白都填对了。第四步流程图框架补全完成。请进入第五步：编写程序。",
+            "___1___：身高\n___2___：体重\n___3___：weight / (height * height)\n___4___：BMI值",
+        )
+        self.assertEqual("debugging", state["learning_step"])
+        self.assertTrue(metadata["learning_step_changed"])
+        self.assertEqual("flowchart", metadata["previous_learning_step"])
+        self.assertIn("第三步任务“编写程序”", response)
+
+    def test_programming_prompt_mentions_turtle_editor(self):
+        state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
+        guarded = guard_programming_stage_overguidance(
+            state,
+            "mentor",
+            "我准备好了",
+            "请写出第一行代码。",
+        )
+        self.assertIn("海龟编辑器", guarded)
+
 
 if __name__ == "__main__":
     unittest.main()
