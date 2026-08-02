@@ -41,6 +41,18 @@ class ReplyCleanupTest(unittest.TestCase):
         self.assertNotIn("第五步", cleaned)
         self.assertIn("第三步任务“编写程序”", cleaned)
 
+    def test_flowchart_design_is_second_algorithm_task(self):
+        raw = "现在请你确认一下，第三步流程图设计是否完成？确认后我们就进入第二步任务“设计算法”。"
+        cleaned = clean_reply(raw)
+        self.assertNotIn("第三步流程图设计", cleaned)
+        self.assertIn("第二步任务“设计算法”流程图设计", cleaned)
+
+    def test_algorithm_is_not_described_as_coding(self):
+        raw = "现在进入第二步任务“设计算法”，也就是编写代码。"
+        cleaned = clean_reply(raw)
+        self.assertNotIn("设计算法”，也就是编写代码", cleaned)
+        self.assertIn("第三步任务“编写程序”，也就是在海龟编辑器编写代码", cleaned)
+
 
 if __name__ == "__main__":
     unittest.main()
