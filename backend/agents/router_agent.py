@@ -24,6 +24,23 @@ PROGRAMMING_RELATED_KEYWORDS = [
     "分支结构", "顺序结构", "反思", "原因", "改进方案", "学习报告",
 ]
 
+REFLECTION_INTENT_KEYWORDS = [
+    "学习评价",
+    "请帮我评价",
+    "帮我评价",
+    "评价一下",
+    "自评",
+    "反思",
+    "学习报告",
+    "请生成报告",
+    "完成全部学习",
+    "完成了全部学习",
+    "全部学习完成",
+    "学完了",
+    "学习完",
+    "本节课结束",
+]
+
 UNRELATED_KEYWORDS = [
     "天气", "新闻", "电影", "电视剧", "股票", "彩票", "旅游", "菜谱", "做饭",
     "历史", "地理", "物理作业", "英语作文", "语文作文",
@@ -59,6 +76,8 @@ def route_agent(message, state, explicit_agent="auto"):
     if looks_like_code_help(message):
         return "mentor"
     if step == "self_evaluation" or state.get("reflection_current_step"):
+        return "assistant"
+    if contains_any(message, REFLECTION_INTENT_KEYWORDS):
         return "assistant"
     if step == "quiz_explain_wait":
         return "mentor"
