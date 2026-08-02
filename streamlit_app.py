@@ -844,6 +844,8 @@ def looks_like_task_completion(message):
 def auto_advance_after_completion(state, user_message, metadata):
     if not has_estimated_time_plan(state) or metadata.get("complete_timer"):
         return None
+    if metadata.get("learning_step_changed"):
+        return None
     if not looks_like_task_completion(user_message):
         return None
 
