@@ -372,8 +372,35 @@ def looks_like_llm_error(message):
 
 
 def fallback_quiz_message(state):
-    exercise = state.get("exercise_prompt") or state.get("current_topic") or "当前编程任务"
-    is_bmi = contains_any(exercise, ["BMI", "bmi", "身高", "体重"])
+    exercise = state.get("exercise_prompt") or "当前编程任务"
+    topic = state.get("current_topic") or ""
+    quiz_context = f"{topic} {exercise}"
+    is_io = contains_any(
+        quiz_context,
+        ["输入输出", "输入和输出", "input", "print", "输出", "输入", "逗号", "字符串", "提示语", "显示"],
+    )
+    is_bmi = contains_any(quiz_context, ["BMI", "bmi", "身高", "体重"])
+    if is_io:
+        return (
+            "我先给你一组围绕“输入输出”的基础知识前测。请按顺序作答，例如：1A 2B 3错 4B。\n\n"
+            "1. 在 Python 中，print() 的主要作用是（）\n\n"
+            "A. 接收用户输入\n\n"
+            "B. 在屏幕上输出内容\n\n"
+            "C. 自动计算公式\n\n"
+            "D. 删除变量\n\n"
+            "2. 在 Python 中，input() 的主要作用是（）\n\n"
+            "A. 把内容显示到屏幕上\n\n"
+            "B. 接收用户从键盘输入的内容\n\n"
+            "C. 让程序自动结束\n\n"
+            "D. 改变代码执行顺序\n\n"
+            "3. print(2 + 3) 输出的是数字计算结果 5，而不是字符串“2+3”。\n\n"
+            "（回答“对”或“错”）\n\n"
+            "4. print('圆周率取', 3.1415926) 中英文逗号的作用是（）\n\n"
+            "A. 让程序报错\n\n"
+            "B. 分隔要输出的多个内容\n\n"
+            "C. 表示加法运算\n\n"
+            "D. 接收用户输入"
+        )
     if is_bmi:
         return (
             "我先给你一组格式完整的基础知识前测。请按顺序作答，例如：1A 2C 3对。\n\n"
@@ -407,10 +434,14 @@ def fallback_quiz_message(state):
     )
 
 
-def quiz_regeneration_prompt(original_message):
+def quiz_regeneration_prompt(state, original_message):
+    exercise = state.get("exercise_prompt") or "当前编程任务"
+    topic = state.get("current_topic") or "当前学习主题"
     return (
         "刚才生成的基础知识测试题格式不完整，不能直接给学生作答。"
-        "请重新生成一组3-5道基础知识测试题，只输出题目，不要解释原因。"
+        f"请重新生成一组3-5道基础知识测试题，只输出题目，不要解释原因。当前学习主题是：{topic}；当前练习题干是：{exercise}。"
+        "题目必须紧扣当前学习主题和练习题干，不要退回到通用的顺序结构题。"
+        "如果主题或题干涉及输入输出、input()、print()、逗号分隔、字符串或输出显示，至少三道题必须直接考查输入输出。"
         "必须严格遵守：每道题用“1. 题干（）”这种数字编号开头；"
         "如果是单选题，必须有且只有A、B、C、D四个选项，并且每个选项独立成行；"
         "如果是判断题，题干下一行写“（回答“对”或“错”）”。"
@@ -433,7 +464,7 @@ def ensure_complete_quiz_message(state, agent, step, message):
     issues = quiz_layout_issues(formatted)
     if not issues and split_quiz_blocks(formatted):
         return formatted, {"quiz_layout_checked": True, "quiz_layout_complete": True}
-    retry = call_llm(state, agent, quiz_regeneration_prompt(formatted))
+    retry = call_llm(state, agent, quiz_regeneration_prompt(state, formatted))
     retry = format_quiz_layout(clean_reply(retry))
     if looks_like_llm_error(retry):
         return retry, {
