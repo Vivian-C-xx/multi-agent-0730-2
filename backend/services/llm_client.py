@@ -103,8 +103,22 @@ def _open_request(req, timeout, use_proxy=True):
 
 def _read_content(resp):
     data = json.loads(resp.read().decode("utf-8"))
-    content = data["choices"][0]["message"].get("content", "").strip()
-    return content or "大模型返回了空内容，请稍后重试或检查模型配置。"
+    choice = data["choices"][0]
+    message = choice.get("message", {})
+    content = (message.get("content") or "").strip()
+    if content:
+        return content
+
+    finish_reason = choice.get("finish_reason") or "unknown"
+    reasoning_content = (message.get("reasoning_content") or "").strip()
+    if reasoning_content:
+        return (
+            "大模型只返回了思考内容，没有返回最终回答。"
+            f"finish_reason={finish_reason}。"
+            "请确认 Streamlit Cloud 已部署最新代码，并在 Secrets 中设置 "
+            'DEEPSEEK_MODEL="deepseek-v4-flash"；当前请求会通过 thinking=disabled 关闭思考模式。'
+        )
+    return f"大模型返回了空内容。finish_reason={finish_reason}，请稍后重试或检查模型配置。"
 
 
 def call_llm(state, agent, message):
