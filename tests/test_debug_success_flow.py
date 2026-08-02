@@ -23,6 +23,22 @@ class DebugSuccessFlowTest(unittest.TestCase):
         message = 'print("ok") 成功运行了'
         self.assertEqual("peer", route_agent(message, state))
 
+    def test_learning_evaluation_routes_to_assistant_before_mentor_step(self):
+        state = {"learning_step": "ipo_analysis", "learning_phase": "IPO问题分析"}
+        self.assertEqual("assistant", route_agent("我完成了全部学习，请帮我评价", state))
+
+    def test_assistant_evaluation_request_enters_reflection(self):
+        state = {"learning_step": "ipo_analysis", "learning_phase": "IPO问题分析"}
+        _, phase, metadata = decorate_message(
+            state,
+            "assistant",
+            "好的，我们进入学习评价。",
+            "我完成了全部学习，请帮我评价",
+        )
+        self.assertEqual("self_evaluation", state["learning_step"])
+        self.assertEqual("学习自评与报告", phase)
+        self.assertTrue(metadata["reflection_available"])
+
     def test_code_that_cannot_run_routes_to_mentor(self):
         state = {"learning_step": "debugging", "learning_phase": "代码编写与调试"}
         message = 'a=input("请输入身高") b=input("请输入体重") bmi=b/(a*a) 我的代码还是不能运行'
