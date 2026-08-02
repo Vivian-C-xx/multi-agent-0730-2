@@ -6,6 +6,7 @@ from backend.services.learning_flow import (
     ensure_complete_quiz_message,
     format_quiz_layout,
     normalize_quiz_grading,
+    prepare_step_for_prompt,
     quiz_regeneration_prompt,
     quiz_layout_issues,
 )
@@ -93,6 +94,39 @@ class QuizFormattingTest(unittest.TestCase):
         self.assertIn("当前学习主题是：输入输出", prompt)
         self.assertIn("不要退回到通用的顺序结构题", prompt)
         self.assertIn("至少三道题必须直接考查输入输出", prompt)
+
+    def test_exercise_intake_saves_prompt_before_llm_call(self):
+        state = {"learning_step": "exercise_intake", "learning_phase": "练习题干输入"}
+        prepare_step_for_prompt(state, "制作一个月饼计算器：用户输入半径后，输出面积和周长")
+        self.assertEqual("制作一个月饼计算器：用户输入半径后，输出面积和周长", state["exercise_prompt"])
+
+    def test_complete_but_irrelevant_quiz_uses_input_output_fallback(self):
+        sequence_quiz = (
+            "我先给你一组基础知识前测。请按顺序作答。\n\n"
+            "1. 程序顺序结构最主要的特点是（）\n\n"
+            "A. 根据条件选择性运行代码\n\n"
+            "B. 按照代码书写顺序，从上到下依次执行\n\n"
+            "C. 重复执行一段代码\n\n"
+            "D. 代码执行顺序可以自动跳跃\n\n"
+            "2. 在 Python 中，变量的主要作用是（）\n\n"
+            "A. 保存数据\n\n"
+            "B. 改变电脑屏幕颜色\n\n"
+            "C. 自动生成图片\n\n"
+            "D. 删除程序\n\n"
+            "3. 算法流程图中的开始和结束通常表示程序边界。\n\n"
+            "（回答“对”或“错”）"
+        )
+        state = {
+            "current_topic": "输入输出",
+            "exercise_prompt": "制作一个月饼计算器：用户输入半径后，输出面积和周长",
+        }
+        with patch("backend.services.learning_flow.call_llm", return_value=sequence_quiz):
+            message, metadata = ensure_complete_quiz_message(state, "assistant", "exercise_intake", sequence_quiz)
+        self.assertTrue(metadata["quiz_fallback_generated"])
+        self.assertTrue(metadata["quiz_topic_mismatch"])
+        self.assertIn("print() 的主要作用", message)
+        self.assertIn("input() 的主要作用", message)
+        self.assertNotIn("程序顺序结构最主要的特点", message)
 
     def test_quiz_grading_corrects_answer_key_consistency(self):
         message = (
