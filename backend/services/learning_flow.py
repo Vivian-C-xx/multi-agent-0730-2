@@ -367,6 +367,51 @@ def quiz_layout_is_complete(message):
     return bool(blocks) and not quiz_layout_issues(message)
 
 
+INPUT_OUTPUT_CONTEXT_KEYWORDS = [
+    "输入输出",
+    "输入和输出",
+    "input",
+    "print",
+    "输出",
+    "输入",
+    "逗号",
+    "字符串",
+    "提示语",
+    "显示",
+]
+
+INPUT_OUTPUT_QUIZ_MARKERS = [
+    "input",
+    "print",
+    "输入",
+    "输出",
+    "逗号",
+    "字符串",
+    "键盘",
+    "屏幕",
+    "显示",
+]
+
+
+def quiz_context_text(state):
+    return f"{state.get('current_topic') or ''} {state.get('exercise_prompt') or ''}"
+
+
+def is_input_output_quiz_context(state):
+    return contains_any(quiz_context_text(state), INPUT_OUTPUT_CONTEXT_KEYWORDS)
+
+
+def quiz_matches_current_context(state, message):
+    if not is_input_output_quiz_context(state):
+        return True
+    io_blocks = [
+        block
+        for block in split_quiz_blocks(message)
+        if contains_any(block, INPUT_OUTPUT_QUIZ_MARKERS)
+    ]
+    return len(io_blocks) >= 3
+
+
 def looks_like_llm_error(message):
     return contains_any(message or "", LLM_ERROR_MARKERS)
 
@@ -375,10 +420,7 @@ def fallback_quiz_message(state):
     exercise = state.get("exercise_prompt") or "当前编程任务"
     topic = state.get("current_topic") or ""
     quiz_context = f"{topic} {exercise}"
-    is_io = contains_any(
-        quiz_context,
-        ["输入输出", "输入和输出", "input", "print", "输出", "输入", "逗号", "字符串", "提示语", "显示"],
-    )
+    is_io = is_input_output_quiz_context(state)
     is_bmi = contains_any(quiz_context, ["BMI", "bmi", "身高", "体重"])
     if is_io:
         return (
@@ -462,8 +504,11 @@ def ensure_complete_quiz_message(state, agent, step, message):
             "quiz_llm_error": True,
         }
     issues = quiz_layout_issues(formatted)
-    if not issues and split_quiz_blocks(formatted):
+    topic_mismatch = not issues and split_quiz_blocks(formatted) and not quiz_matches_current_context(state, formatted)
+    if not issues and split_quiz_blocks(formatted) and not topic_mismatch:
         return formatted, {"quiz_layout_checked": True, "quiz_layout_complete": True}
+    if topic_mismatch:
+        issues = [{"topicMismatch": True}]
     retry = call_llm(state, agent, quiz_regeneration_prompt(state, formatted))
     retry = format_quiz_layout(clean_reply(retry))
     if looks_like_llm_error(retry):
@@ -473,14 +518,17 @@ def ensure_complete_quiz_message(state, agent, step, message):
             "quiz_regenerated": True,
             "quiz_llm_error": True,
             "quiz_layout_issues": issues,
+            "quiz_topic_mismatch": topic_mismatch,
         }
     retry_issues = quiz_layout_issues(retry)
-    if not retry_issues and split_quiz_blocks(retry):
+    retry_topic_mismatch = bool(split_quiz_blocks(retry)) and not quiz_matches_current_context(state, retry)
+    if not retry_issues and split_quiz_blocks(retry) and not retry_topic_mismatch:
         return retry, {
             "quiz_layout_checked": True,
             "quiz_layout_complete": True,
             "quiz_regenerated": True,
             "quiz_layout_issues": issues,
+            "quiz_topic_mismatch": topic_mismatch,
         }
     fallback = format_quiz_layout(fallback_quiz_message(state))
     return fallback, {
@@ -488,6 +536,7 @@ def ensure_complete_quiz_message(state, agent, step, message):
         "quiz_layout_complete": True,
         "quiz_regenerated": True,
         "quiz_fallback_generated": True,
+        "quiz_topic_mismatch": topic_mismatch or retry_topic_mismatch,
         "quiz_layout_issues": retry_issues or issues,
     }
 
@@ -752,6 +801,8 @@ def mentor_quiz_explanation_trigger(state, user_message, assistant_message):
 def prepare_step_for_prompt(state, user_message):
     step = state.get("learning_step", "topic_intro")
     text = user_message.strip()
+    if step == "exercise_intake" and text:
+        state["exercise_prompt"] = text[:500]
     if step == "quiz_explain_wait" and contains_any(text, ["掌握", "明白", "懂了", "会了"]):
         state["learning_phase"] = "掌握检验"
         state["learning_step"] = "quiz_review"
