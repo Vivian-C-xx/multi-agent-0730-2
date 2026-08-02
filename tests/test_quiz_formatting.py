@@ -2,8 +2,10 @@ import unittest
 from unittest.mock import patch
 
 from backend.services.learning_flow import (
+    decorate_message,
     ensure_complete_quiz_message,
     format_quiz_layout,
+    normalize_quiz_grading,
     quiz_layout_issues,
 )
 
@@ -69,6 +71,32 @@ class QuizFormattingTest(unittest.TestCase):
         self.assertFalse(metadata["quiz_layout_complete"])
         self.assertTrue(metadata["quiz_llm_error"])
         self.assertIn("DeepSeek API 密钥", message)
+
+
+    def test_quiz_grading_corrects_answer_key_consistency(self):
+        message = (
+            "前测批改结果：\n\n"
+            "第1题：正确 第2题：正确 第3题：正确答案是 错。print(2+3) 输出的结果是数字5，不是字符串“2+3”。"
+            "第4题：正确答案是 B。print('你的年龄是',15) 用英文逗号分隔字符串和算式。\n\n"
+            "正确率：75% 前测通过：否"
+        )
+        corrected, metadata = normalize_quiz_grading("B B 错 B", message)
+        self.assertTrue(metadata["quiz_grading_corrected"])
+        self.assertIn("正确率：100%", corrected)
+        self.assertIn("前测通过：是", corrected)
+
+    def test_quiz_grading_correction_allows_next_stage(self):
+        state = {"learning_step": "quiz", "learning_phase": "前测"}
+        response, phase, metadata = decorate_message(
+            state,
+            "assistant",
+            "第1题：正确 第2题：正确 第3题：正确答案是 错。第4题：正确答案是 B。正确率：75% 前测通过：否",
+            "B B 错 B",
+        )
+        self.assertEqual("plan_allocation", state["learning_step"])
+        self.assertEqual("任务拆解与时间分配", phase)
+        self.assertTrue(metadata["quiz_passed"])
+        self.assertIn("正确率：100%", response)
 
 
 if __name__ == "__main__":
